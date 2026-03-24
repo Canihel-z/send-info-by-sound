@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nano-Acoustic Data</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Echo-Link</h1>
+        <p>Transmission de données par ultrasons</p>
+
+        <textarea id="message" placeholder="Tape ton message ici..."></textarea>
+        
+        <div class="controls">
+            <button id="btnEmit">Émettre 📡</button>
+            <button id="btnListen">Recevoir 🎤</button>
+            <button id="btnStop" class="hidden">Arrêter</button>
+        </div>
+
+        <div id="status" class="status">Mode : Veille</div>
+        <div class="output-box">
+            <h3>Texte Reçu :</h3>
+            <p id="receivedText">...</p>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
