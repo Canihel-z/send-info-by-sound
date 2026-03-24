@@ -3,27 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nano-Acoustic Data</title>
+    <title>Echo-Link | Transfert Sonore</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Echo-Link</h1>
-        <p>Transmission de données par ultrasons</p>
+    <div class="app-card">
+        <header>
+            <h1>Echo-Link</h1>
+            <p class="subtitle">Protocole de transmission acoustique</p>
+        </header>
 
-        <textarea id="message" placeholder="Tape ton message ici..."></textarea>
-        
-        <div class="controls">
-            <button id="btnEmit">Émettre 📡</button>
-            <button id="btnListen">Recevoir 🎤</button>
-            <button id="btnStop" class="hidden">Arrêter</button>
-        </div>
+        <section class="main-content">
+            <label for="message">Message à envoyer</label>
+            <textarea id="message" placeholder="Écrivez votre texte ici..."></textarea>
+            
+            <div class="button-group">
+                <button id="btnEmit" class="btn-primary">Envoyer 📡</button>
+                <button id="btnListen" class="btn-secondary">Recevoir 🎤</button>
+            </div>
 
-        <div id="status" class="status">Mode : Veille</div>
-        <div class="output-box">
-            <h3>Texte Reçu :</h3>
-            <p id="receivedText">...</p>
-        </div>
+            <div id="status" class="status-bar">Système prêt</div>
+
+            <div class="result-area">
+                <span class="label">Texte intercepté :</span>
+                <div id="receivedText" class="display-box">---</div>
+            </div>
+        </section>
+
+        <footer>
+            <p>Prototype développé par <strong>Canihel</strong></p>
+        </footer>
     </div>
     <script src="script.js"></script>
 </body>
