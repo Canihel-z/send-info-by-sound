@@ -1,111 +1,142 @@
 let audioCtx;
-let isRunning = false;
+let isListening = false;
+let listenInterval;
 
-// Configuration des fréquences (proches des ultrasons)
-const FREQ_0 = 18500; // Fréquence pour le bit 0
-const FREQ_1 = 19500; // Fréquence pour le bit 1
-const BIT_DURATION = 0.1; // Durée d'un bit en secondes (100ms)
+// CONFIGURATION TECHNIQUE
+const FREQ_START = 20000; // Signal de début (Start Frame)
+const FREQ_0 = 18500;     // Bit 0
+const FREQ_1 = 19500;     // Bit 1
+const BIT_DURATION = 0.1; // 100ms par bit
+const THRESHOLD = 80;     // Sensibilité du micro (à ajuster si besoin)
 
 const statusEl = document.getElementById('status');
 const receivedEl = document.getElementById('receivedText');
 
-// --- ÉMISSION ---
+// --- FONCTION ÉMISSION ---
 async function transmit(text) {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    statusEl.innerText = "Mode : Émission...";
+    statusEl.innerText = "⚡ Émission en cours...";
     
-    // Convertir texte en binaire
+    // 1. Conversion Texte -> Binaire
     let binary = "";
     for (let i = 0; i < text.length; i++) {
         binary += text[i].charCodeAt(0).toString(2).padStart(8, '0');
     }
 
-    let now = audioCtx.currentTime;
+    const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     
     osc.type = 'sine';
     osc.connect(gain);
     gain.connect(audioCtx.destination);
-    
-    // On baisse un peu le volume pour éviter la distorsion
     gain.gain.setValueAtTime(0.5, now);
-    osc.start();
 
-    // Séquence de fréquences
+    // 2. Envoi du PRÉAMBULE (Signal de réveil pour l'autre tel)
+    osc.frequency.setValueAtTime(FREQ_START, now);
+    
+    // 3. Envoi des BITS (on commence après le préambule de 0.5s)
+    const startDelay = 0.5;
     for (let j = 0; j < binary.length; j++) {
         let freq = (binary[j] === '1') ? FREQ_1 : FREQ_0;
-        osc.frequency.setValueAtTime(freq, now + (j * BIT_DURATION));
+        osc.frequency.setValueAtTime(freq, now + startDelay + (j * BIT_DURATION));
     }
 
-    // Arrêt après la fin
-    osc.stop(now + (binary.length * BIT_DURATION));
-    osc.onended = () => { statusEl.innerText = "Mode : Terminé"; };
+    osc.start(now);
+    osc.stop(now + startDelay + (binary.length * BIT_DURATION));
+    
+    osc.onended = () => {
+        statusEl.innerText = "✅ Message envoyé";
+    };
 }
 
-// --- RÉCEPTION ---
+// --- FONCTION RÉCEPTION ---
 async function startListening() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    statusEl.innerText = "Mode : Écoute...";
+    statusEl.innerText = "🔍 Attente du signal...";
+    receivedEl.innerText = "";
 
     try {
-        // C'est ici qu'on désactive les filtres du navigateur
         const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: false,
-                autoGainControl: false,
-                noiseSuppression: false
-            }
+            audio: { echoCancellation: false, autoGainControl: false, noiseSuppression: false }
         });
 
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 2048; // Précision de l'analyse
+        analyser.fftSize = 2048; 
         source.connect(analyser);
 
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-        
-        let binaryResult = "";
-        let lastCharBinary = "";
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const hzPerBin = audioCtx.sampleRate / analyser.fftSize;
 
-        function checkFrequency() {
-            if (!isRunning) return;
+        let isDecoding = false;
+        let bitBuffer = "";
+        let finalMessage = "";
+
+        // Boucle de détection ultra-rapide pour le signal de départ
+        const detectSignal = () => {
+            if (!isListening) return;
             analyser.getByteFrequencyData(dataArray);
 
-            // Trouver quelle fréquence domine
-            let index0 = Math.round(FREQ_0 / (audioCtx.sampleRate / analyser.fftSize));
-            let index1 = Math.round(FREQ_1 / (audioCtx.sampleRate / analyser.fftSize));
-
-            let val0 = dataArray[index0];
-            let val1 = dataArray[index1];
-
-            // Seuil simple de détection
-            if (val0 > 100 || val1 > 100) {
-                let bit = (val1 > val0) ? "1" : "0";
-                binaryResult += bit; // Note: ceci est une version simplifiée
-                // Dans un vrai projet, il faudrait gérer le timing pour ne pas lire 100 fois le même bit
+            const valStart = dataArray[Math.round(FREQ_START / hzPerBin)];
+            
+            // Si on détecte le signal de départ et qu'on ne décode pas encore
+            if (valStart > THRESHOLD && !isDecoding) {
+                isDecoding = true;
+                statusEl.innerText = "📥 Réception de données...";
+                
+                // On attend la fin du préambule (500ms) + un petit décalage pour tomber au milieu du 1er bit
+                setTimeout(() => {
+                    decodeBits();
+                }, 550); 
+                return;
             }
+            if (!isDecoding) requestAnimationFrame(detectSignal);
+        };
 
-            requestAnimationFrame(checkFrequency);
-        }
+        // Fonction de lecture cadencée des bits
+        const decodeBits = () => {
+            listenInterval = setInterval(() => {
+                analyser.getByteFrequencyData(dataArray);
+                const v0 = dataArray[Math.round(FREQ_0 / hzPerBin)];
+                const v1 = dataArray[Math.round(FREQ_1 / hzPerBin)];
 
-        isRunning = true;
-        checkFrequency();
+                // Si plus de son détecté, on arrête
+                if (v0 < 30 && v1 < 30) {
+                    clearInterval(listenInterval);
+                    isDecoding = false;
+                    statusEl.innerText = "✅ Réception terminée";
+                    detectSignal(); // Se remet en attente du prochain message
+                    return;
+                }
+
+                // Détection du bit dominant
+                bitBuffer += (v1 > v0) ? "1" : "0";
+
+                // Toutes les 8 lectures (1 octet), on convertit en lettre
+                if (bitBuffer.length === 8) {
+                    finalMessage += String.fromCharCode(parseInt(bitBuffer, 2));
+                    receivedEl.innerText = finalMessage;
+                    bitBuffer = "";
+                }
+            }, BIT_DURATION * 1000);
+        };
+
+        isListening = true;
+        detectSignal();
 
     } catch (err) {
-        console.error("Micro refusé :", err);
-        statusEl.innerText = "Erreur micro.";
+        statusEl.innerText = "❌ Erreur Micro";
+        console.error(err);
     }
 }
 
-// --- EVENTS ---
+// --- BOUTONS ---
 document.getElementById('btnEmit').onclick = () => {
     const text = document.getElementById('message').value;
-    if(text) transmit(text);
+    if (text) transmit(text);
 };
 
 document.getElementById('btnListen').onclick = () => {
-    isRunning = true;
-    startListening();
+    if (!isListening) startListening();
 };
